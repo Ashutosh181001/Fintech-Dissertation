@@ -1,0 +1,154 @@
+# Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: crypto-storage
+  namespace: crypto
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Producer
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producer
+  namespace: crypto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer
+  template:
+    metadata:
+      labels:
+        app: producer
+    spec:
+      containers:
+      - name: producer
+        image: europe-west2-docker.pkg.dev/crypto-anomaly-detection/crypto/crypto-producer:latest
+        imagePullPolicy: Always  # Always pull latest
+        command: ["python", "kafka_producer.py"]
+        envFrom:
+        - secretRef:
+            name: kafka-credentials
+        env:
+        - name: ENV_MODE
+          value: "GKE"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+---
+# Detector
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: detector
+  namespace: crypto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: detector
+  template:
+    metadata:
+      labels:
+        app: detector
+    spec:
+      initContainers:
+      - name: init-data-dir
+        image: busybox:1.36
+        command: ["sh", "-c", "mkdir -p /data/output && chmod -R 777 /data"]
+        volumeMounts:
+        - name: storage
+          mountPath: /data
+      containers:
+      - name: detector
+        image: europe-west2-docker.pkg.dev/crypto-anomaly-detection/crypto/crypto-detector:latest
+        imagePullPolicy: Always  # Always pull latest
+        command: ["python", "detect.py"]
+        envFrom:
+        - secretRef:
+            name: kafka-credentials
+        env:
+        - name: DATABASE_PATH
+          value: "/data/output/trading_anomalies.db"
+        - name: TRADES_CSV
+          value: "/data/output/trades.csv"
+        - name: ANOMALIES_CSV
+          value: "/data/output/anomalies.csv"
+        - name: ENV_MODE
+          value: "GKE"
+        volumeMounts:
+        - name: storage
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: crypto-storage
+---
+# Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: crypto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: europe-west2-docker.pkg.dev/crypto-anomaly-detection/crypto/crypto-dashboard:latest
+        imagePullPolicy: Always  # Always pull latest
+        command: ["streamlit", "run", "dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+        ports:
+        - containerPort: 8501
+        volumeMounts:
+        - name: storage
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: crypto-storage
+---
+# Dashboard Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: crypto
+spec:
+  selector:
+    app: dashboard
+  ports:
+  - port: 8501
+    targetPort: 8501
+  type: ClusterIP
