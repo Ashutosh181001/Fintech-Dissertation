@@ -34,12 +34,12 @@ A real-time cryptocurrency anomaly detection pipeline that monitors multiple tra
 ### Step 1: Start Docker Services
 
 1. **Start Docker**
-   - On Windows: Open Docker Desktop
-   - On Mac: Open Docker Desktop
+   - On termimal: Make sure to set working directory as ./baseline-Code 
 
 2. **Start Kafka**
    ```bash
-   docker-compose up -d kafka zookeeper
+   docker-compose -f baseline-docker.yml up -d
+
    ```
 
 3. **Verify Kafka is running**
