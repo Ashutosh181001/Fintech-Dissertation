@@ -98,6 +98,7 @@ python tune_model.py
 ## Troubleshooting
 
 ### Kafka Issues
+- Streaming old data: Always make sure to remove old Docker container and re-compose as old messages can clog in the topic
 - Ensure Docker is running: `docker ps`
 - Restart Kafka: `docker-compose restart kafka`
 - Check logs: `docker-compose logs kafka`
